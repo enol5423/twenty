@@ -1,9 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
 
 import { CalDavClientProvider } from 'src/modules/calendar/calendar-event-import-manager/drivers/caldav/providers/caldav-client.provider';
+import { CalDavErrorHandler } from 'src/modules/calendar/calendar-event-import-manager/drivers/caldav/services/caldav-error-handler.service';
 import { CalDavFetchEventsService } from 'src/modules/calendar/calendar-event-import-manager/drivers/caldav/services/caldav-fetch-events.service';
 import { type CalDavSyncCursor } from 'src/modules/calendar/calendar-event-import-manager/drivers/caldav/types/caldav-sync-cursor';
-import { parseCalDAVError } from 'src/modules/calendar/calendar-event-import-manager/drivers/caldav/utils/parse-caldav-error.util';
 import { type GetCalendarEventsResponse } from 'src/modules/calendar/calendar-event-import-manager/services/calendar-get-events.service';
 
 @Injectable()
@@ -13,6 +13,7 @@ export class CalDavGetEventsService {
   constructor(
     private readonly calDavClientProvider: CalDavClientProvider,
     private readonly fetchEventsService: CalDavFetchEventsService,
+    private readonly calDavErrorHandler: CalDavErrorHandler,
   ) {}
 
   async getCalendarEvents(
@@ -40,12 +41,7 @@ export class CalDavGetEventsService {
         nextSyncCursor: JSON.stringify(result.syncCursor),
       };
     } catch (error) {
-      this.logger.error(
-        `Error in ${CalDavGetEventsService.name} - getCalendarEvents`,
-        error,
-      );
-
-      throw parseCalDAVError(error as Error);
+      this.calDavErrorHandler.handleError(error, 'getCalendarEvents');
     }
   }
 }

@@ -7,6 +7,7 @@ import { ConnectedAccountEntity } from 'src/engine/metadata-modules/connected-ac
 import { ConnectedAccountTokenEncryptionModule } from 'src/engine/metadata-modules/connected-account/services/connected-account-token-encryption.module';
 import { CalDavClientProvider } from 'src/modules/calendar/calendar-event-import-manager/drivers/caldav/providers/caldav-client.provider';
 import { CalDavClientService } from 'src/modules/calendar/calendar-event-import-manager/drivers/caldav/services/caldav-client.service';
+import { CalDavErrorHandler } from 'src/modules/calendar/calendar-event-import-manager/drivers/caldav/services/caldav-error-handler.service';
 import { CalDavFetchEventsService } from 'src/modules/calendar/calendar-event-import-manager/drivers/caldav/services/caldav-fetch-events.service';
 import { CalDavGetEventsService } from 'src/modules/calendar/calendar-event-import-manager/drivers/caldav/services/caldav-get-events.service';
 import { CalDavImportEventsService } from 'src/modules/calendar/calendar-event-import-manager/drivers/caldav/services/caldav-import-events.service';
@@ -21,6 +22,7 @@ import { CalDavImportEventsService } from 'src/modules/calendar/calendar-event-i
   providers: [
     CalDavClientProvider,
     CalDavClientService,
+    CalDavErrorHandler,
     CalDavFetchEventsService,
     CalDavGetEventsService,
     CalDavImportEventsService,
@@ -28,6 +30,7 @@ import { CalDavImportEventsService } from 'src/modules/calendar/calendar-event-i
   exports: [
     CalDavClientProvider,
     CalDavClientService,
+    CalDavErrorHandler,
     CalDavFetchEventsService,
     CalDavGetEventsService,
     CalDavImportEventsService,
