@@ -13,7 +13,6 @@ import { type ConnectedAccountEntity } from 'src/engine/metadata-modules/connect
 import { ImapClientProvider } from 'src/modules/messaging/message-import-manager/drivers/imap/providers/imap-client.provider';
 import { ImapFindDraftsFolderService } from 'src/modules/messaging/message-import-manager/drivers/imap/services/imap-find-drafts-folder.service';
 import { getImapFolderPath } from 'src/modules/messaging/message-import-manager/drivers/imap/utils/get-imap-folder-path.util';
-import { normalizeImapFolderPath } from 'src/modules/messaging/message-import-manager/drivers/imap/utils/normalize-imap-folder-path.util';
 import { parseMessageId } from 'src/modules/messaging/message-import-manager/drivers/imap/utils/parse-message-id.util';
 import { SmtpClientProvider } from 'src/modules/messaging/message-import-manager/drivers/smtp/providers/smtp-client.provider';
 import { type SendMessageInput } from 'src/modules/messaging/message-outbound-manager/types/send-message-input.type';
@@ -86,13 +85,13 @@ export class ImapSmtpMessageOutboundService implements MessageOutboundDriver {
         });
       }
 
-      const sentFolderPath = getImapFolderPath(sentFolder?.externalId);
+      const sentFolderPath = getImapFolderPath(
+        imapClient,
+        sentFolder?.externalId,
+      );
 
       if (isDefined(sentFolderPath)) {
-        await imapClient.append(
-          normalizeImapFolderPath(imapClient, sentFolderPath),
-          messageBuffer,
-        );
+        await imapClient.append(sentFolderPath, messageBuffer);
       }
 
       await this.imapClientProvider.closeClient(imapClient);

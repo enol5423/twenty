@@ -16,7 +16,6 @@ import { ImapSyncService } from 'src/modules/messaging/message-import-manager/dr
 import { createSyncCursor } from 'src/modules/messaging/message-import-manager/drivers/imap/utils/create-sync-cursor.util';
 import { resolveMailboxState } from 'src/modules/messaging/message-import-manager/drivers/imap/utils/extract-mailbox-state.util';
 import { getImapFolderPath } from 'src/modules/messaging/message-import-manager/drivers/imap/utils/get-imap-folder-path.util';
-import { normalizeImapFolderPath } from 'src/modules/messaging/message-import-manager/drivers/imap/utils/normalize-imap-folder-path.util';
 import { parseImapMessageListFetchError } from 'src/modules/messaging/message-import-manager/drivers/imap/utils/parse-imap-message-list-fetch-error.util';
 import { parseSyncCursor } from 'src/modules/messaging/message-import-manager/drivers/imap/utils/parse-sync-cursor.util';
 import { type GetMessageListsArgs } from 'src/modules/messaging/message-import-manager/types/get-message-lists-args.type';
@@ -95,16 +94,14 @@ export class ImapGetMessageListService {
     client: ImapFlow,
     folder: MessageFolder,
   ): Promise<GetOneMessageListResponse> {
-    const storedFolderPath = getImapFolderPath(folder.externalId);
+    const folderPath = getImapFolderPath(client, folder.externalId);
 
-    if (!isDefined(storedFolderPath)) {
+    if (!isDefined(folderPath)) {
       throw new MessageImportDriverException(
         `Folder ${folder.name} has no path`,
         MessageImportDriverExceptionCode.NOT_FOUND,
       );
     }
-
-    const folderPath = normalizeImapFolderPath(client, storedFolderPath);
 
     if (await this.canSkipFolderSync(client, folder)) {
       this.logger.log(`Skipping folder ${folder.name}: no new messages`);
@@ -173,14 +170,12 @@ export class ImapGetMessageListService {
     client: ImapFlow,
     folder: MessageFolder,
   ): Promise<boolean> {
-    const storedFolderPath = getImapFolderPath(folder.externalId);
+    const folderPath = getImapFolderPath(client, folder.externalId);
     const previousCursor = parseSyncCursor(folder.syncCursor);
 
-    if (!isDefined(storedFolderPath) || !isDefined(previousCursor)) {
+    if (!isDefined(folderPath) || !isDefined(previousCursor)) {
       return false;
     }
-
-    const folderPath = normalizeImapFolderPath(client, storedFolderPath);
 
     try {
       const supportsCondstore = client.capabilities.has('CONDSTORE');

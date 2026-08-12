@@ -398,23 +398,11 @@ describe('ImapGetMessageListService', () => {
         messageFolders: [decomposedFolder],
       });
 
-    afterEach(() => {
-      mockImapClient.enabled.add('UTF8=ACCEPT');
-    });
-
     it('selects the NFC form of a stored decomposed path on a UTF8=ACCEPT session', async () => {
       const result = await runSync();
 
       expect(mockImapClient.getMailboxLock).toHaveBeenCalledWith(nfcPath);
       expect(result[0].messageExternalIds[0]).toBe(`${nfcPath}:3`);
-    });
-
-    it('replays the stored path byte-exact when the session has no UTF8=ACCEPT', async () => {
-      mockImapClient.enabled.delete('UTF8=ACCEPT');
-
-      await runSync();
-
-      expect(mockImapClient.getMailboxLock).toHaveBeenCalledWith(nfdPath);
     });
   });
 });

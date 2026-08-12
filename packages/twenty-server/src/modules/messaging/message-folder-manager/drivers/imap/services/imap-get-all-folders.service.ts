@@ -110,7 +110,7 @@ export class ImapGetAllFoldersService implements MessageFolderDriver {
     }
 
     for (const mailbox of mailboxes) {
-      if (!this.isValidMailbox(mailbox, folders)) {
+      if (!this.isValidMailbox(client, mailbox, folders)) {
         if (!pathToExternalIdMap.has(mailbox.path)) {
           pathToExternalIdMap.set(mailbox.path, mailbox.path);
         }
@@ -173,6 +173,7 @@ export class ImapGetAllFoldersService implements MessageFolderDriver {
   }
 
   private isValidMailbox(
+    client: ImapFlow,
     mailbox: ListResponse,
     existingFolders: DiscoveredMessageFolder[],
   ): boolean {
@@ -181,7 +182,8 @@ export class ImapGetAllFoldersService implements MessageFolderDriver {
     }
 
     const isDuplicate = existingFolders.some(
-      (folder) => getImapFolderPath(folder?.externalId) === mailbox.path,
+      (folder) =>
+        getImapFolderPath(client, folder?.externalId) === mailbox.path,
     );
 
     return !isDuplicate;
