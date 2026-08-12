@@ -15,6 +15,7 @@ import { shouldSyncFolderByDefault } from 'src/modules/messaging/message-folder-
 import { ImapClientProvider } from 'src/modules/messaging/message-import-manager/drivers/imap/providers/imap-client.provider';
 import { ImapFindSentFolderService } from 'src/modules/messaging/message-import-manager/drivers/imap/services/imap-find-sent-folder.service';
 import { getImapFolderPath } from 'src/modules/messaging/message-import-manager/drivers/imap/utils/get-imap-folder-path.util';
+import { normalizeImapFolderPath } from 'src/modules/messaging/message-import-manager/drivers/imap/utils/normalize-imap-folder-path.util';
 import { getStandardFolderByRegex } from 'src/modules/messaging/message-import-manager/drivers/utils/get-standard-folder-by-regex';
 
 @Injectable()
@@ -66,11 +67,24 @@ export class ImapGetAllFoldersService implements MessageFolderDriver {
   ): Promise<DiscoveredMessageFolder[]> {
     const folders: DiscoveredMessageFolder[] = [];
     const pathToExternalIdMap = new Map<string, string>();
-    const sentFolder =
+    const mailboxes = mailboxList.map((mailbox) => ({
+      ...mailbox,
+      path: normalizeImapFolderPath(client, mailbox.path),
+      parentPath: mailbox.parentPath
+        ? normalizeImapFolderPath(client, mailbox.parentPath)
+        : mailbox.parentPath,
+    }));
+    const discoveredSentFolder =
       await this.imapFindSentFolderService.findSentFolder(client);
+    const sentFolder = isDefined(discoveredSentFolder)
+      ? {
+          ...discoveredSentFolder,
+          path: normalizeImapFolderPath(client, discoveredSentFolder.path),
+        }
+      : null;
 
     const sentMailbox = isDefined(sentFolder)
-      ? mailboxList.find((mailbox) => mailbox.path === sentFolder.path)
+      ? mailboxes.find((mailbox) => mailbox.path === sentFolder.path)
       : undefined;
 
     if (
@@ -95,7 +109,7 @@ export class ImapGetAllFoldersService implements MessageFolderDriver {
       });
     }
 
-    for (const mailbox of mailboxList) {
+    for (const mailbox of mailboxes) {
       if (!this.isValidMailbox(mailbox, folders)) {
         if (!pathToExternalIdMap.has(mailbox.path)) {
           pathToExternalIdMap.set(mailbox.path, mailbox.path);

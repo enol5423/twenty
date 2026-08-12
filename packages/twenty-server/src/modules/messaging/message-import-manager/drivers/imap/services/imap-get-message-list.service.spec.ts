@@ -10,6 +10,10 @@ import { type MessageFolder } from 'src/modules/messaging/message-folder-manager
 
 import { type EncryptedString } from 'src/engine/core-modules/secret-encryption/branded-strings/encrypted-string.type';
 import { type ConnectedAccountEntity } from 'src/engine/metadata-modules/connected-account/entities/connected-account.entity';
+import {
+  MessageImportDriverException,
+  MessageImportDriverExceptionCode,
+} from 'src/modules/messaging/message-import-manager/drivers/exceptions/message-import-driver.exception';
 import { ImapClientProvider } from 'src/modules/messaging/message-import-manager/drivers/imap/providers/imap-client.provider';
 import { ImapGetMessageListService } from 'src/modules/messaging/message-import-manager/drivers/imap/services/imap-get-message-list.service';
 import { ImapMessageListFetchErrorHandler } from 'src/modules/messaging/message-import-manager/drivers/imap/services/imap-message-list-fetch-error-handler.service';
@@ -31,6 +35,7 @@ describe('ImapGetMessageListService', () => {
   let service: ImapGetMessageListService;
   let imapClientProvider: ImapClientProvider;
   let imapSyncService: ImapSyncService;
+  let errorHandler: ImapMessageListFetchErrorHandler;
 
   const mockConnectedAccount: Pick<
     ConnectedAccountEntity,
@@ -59,6 +64,7 @@ describe('ImapGetMessageListService', () => {
       highestModseq: '1000',
     },
     capabilities: new Set(['CONDSTORE']),
+    enabled: new Set(['UTF8=ACCEPT']),
     status: jest.fn().mockResolvedValue({
       uidValidity: 12345,
       uidNext: 100,
@@ -95,6 +101,9 @@ describe('ImapGetMessageListService', () => {
     service = module.get<ImapGetMessageListService>(ImapGetMessageListService);
     imapClientProvider = module.get<ImapClientProvider>(ImapClientProvider);
     imapSyncService = module.get<ImapSyncService>(ImapSyncService);
+    errorHandler = module.get<ImapMessageListFetchErrorHandler>(
+      ImapMessageListFetchErrorHandler,
+    );
   });
 
   afterEach(() => {
@@ -272,6 +281,140 @@ describe('ImapGetMessageListService', () => {
 
       expect(imapSyncService.syncFolder).toHaveBeenCalledTimes(1);
       expect(result.messageExternalIds).not.toEqual([]);
+    });
+  });
+
+  describe('per-folder error isolation', () => {
+    const ghostFolder = createMockFolder({
+      name: 'Anémo+',
+      externalId: 'Parent/Subfolder/Anémo+:1',
+      isSynced: true,
+    });
+
+    const healthyFolder = createMockFolder({
+      name: 'INBOX',
+      externalId: 'INBOX:1',
+      isSynced: true,
+    });
+
+    const missingMailboxError = Object.assign(new Error('Command failed'), {
+      response: 'NO Mailbox does not exist',
+      responseStatus: 'NO',
+      responseText: 'Mailbox does not exist',
+      executedCommand: 'SELECT "Parent/Subfolder/Anémo+"',
+    });
+
+    const runSync = () =>
+      service.getMessageLists({
+        connectedAccount: mockConnectedAccount,
+        messageChannel: {
+          syncCursor: '',
+          id: 'channel-1',
+          messageFolderImportPolicy: MessageFolderImportPolicy.ALL_FOLDERS,
+        },
+        messageFolders: [ghostFolder, healthyFolder],
+      });
+
+    afterEach(() => {
+      mockImapClient.getMailboxLock.mockResolvedValue({ release: jest.fn() });
+    });
+
+    it('skips a folder whose mailbox no longer exists and syncs the remaining folders', async () => {
+      mockImapClient.getMailboxLock.mockImplementation((path: string) =>
+        path === 'INBOX'
+          ? Promise.resolve({ release: jest.fn() })
+          : Promise.reject(missingMailboxError),
+      );
+
+      const result = await runSync();
+
+      expect(result).toHaveLength(1);
+      expect(result[0].folderId).toBe(healthyFolder.id);
+      expect(errorHandler.handleError).not.toHaveBeenCalled();
+      expect(imapClientProvider.closeClient).toHaveBeenCalledTimes(1);
+    });
+
+    it('still fails the whole sync on errors that are not folder-local', async () => {
+      const serverError = Object.assign(new Error('Command failed'), {
+        responseStatus: 'NO',
+        responseText: 'Server busy, try again later',
+      });
+
+      mockImapClient.getMailboxLock.mockRejectedValue(serverError);
+      (errorHandler.handleError as jest.Mock).mockImplementation(() => {
+        throw new MessageImportDriverException(
+          'Unknown IMAP message list fetch error',
+          MessageImportDriverExceptionCode.UNKNOWN,
+        );
+      });
+
+      await expect(runSync()).rejects.toBeInstanceOf(
+        MessageImportDriverException,
+      );
+      expect(errorHandler.handleError).toHaveBeenCalledWith(serverError);
+      expect(imapClientProvider.closeClient).toHaveBeenCalledTimes(1);
+    });
+
+    it('skips a folder whose externalId has no path instead of failing the sync', async () => {
+      const pathlessFolder = createMockFolder({
+        name: 'Broken',
+        externalId: '',
+        isSynced: true,
+      });
+
+      const result = await service.getMessageLists({
+        connectedAccount: mockConnectedAccount,
+        messageChannel: {
+          syncCursor: '',
+          id: 'channel-1',
+          messageFolderImportPolicy: MessageFolderImportPolicy.ALL_FOLDERS,
+        },
+        messageFolders: [pathlessFolder, healthyFolder],
+      });
+
+      expect(result).toHaveLength(1);
+      expect(result[0].folderId).toBe(healthyFolder.id);
+    });
+  });
+
+  describe('unicode folder path normalization', () => {
+    const nfdPath = 'Parent/Ane\u0301mo+';
+    const nfcPath = 'Parent/An\u00e9mo+';
+
+    const decomposedFolder = createMockFolder({
+      name: 'Anémo+',
+      externalId: `${nfdPath}:1`,
+      isSynced: true,
+    });
+
+    const runSync = () =>
+      service.getMessageLists({
+        connectedAccount: mockConnectedAccount,
+        messageChannel: {
+          syncCursor: '',
+          id: 'channel-1',
+          messageFolderImportPolicy: MessageFolderImportPolicy.ALL_FOLDERS,
+        },
+        messageFolders: [decomposedFolder],
+      });
+
+    afterEach(() => {
+      mockImapClient.enabled.add('UTF8=ACCEPT');
+    });
+
+    it('selects the NFC form of a stored decomposed path on a UTF8=ACCEPT session', async () => {
+      const result = await runSync();
+
+      expect(mockImapClient.getMailboxLock).toHaveBeenCalledWith(nfcPath);
+      expect(result[0].messageExternalIds[0]).toBe(`${nfcPath}:3`);
+    });
+
+    it('replays the stored path byte-exact when the session has no UTF8=ACCEPT', async () => {
+      mockImapClient.enabled.delete('UTF8=ACCEPT');
+
+      await runSync();
+
+      expect(mockImapClient.getMailboxLock).toHaveBeenCalledWith(nfdPath);
     });
   });
 });

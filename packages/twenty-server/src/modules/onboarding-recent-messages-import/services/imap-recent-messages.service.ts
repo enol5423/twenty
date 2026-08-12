@@ -6,6 +6,7 @@ import { isDefined } from 'twenty-shared/utils';
 import { type MessageFolder } from 'src/modules/messaging/message-folder-manager/interfaces/message-folder-driver.interface';
 import { ImapClientProvider } from 'src/modules/messaging/message-import-manager/drivers/imap/providers/imap-client.provider';
 import { getImapFolderPath } from 'src/modules/messaging/message-import-manager/drivers/imap/utils/get-imap-folder-path.util';
+import { normalizeImapFolderPath } from 'src/modules/messaging/message-import-manager/drivers/imap/utils/normalize-imap-folder-path.util';
 
 @Injectable()
 export class ImapRecentMessagesService {
@@ -59,11 +60,13 @@ export class ImapRecentMessagesService {
     messageFolder: MessageFolder;
     maxCount: number;
   }): Promise<string[]> {
-    const folderPath = getImapFolderPath(messageFolder.externalId);
+    const storedFolderPath = getImapFolderPath(messageFolder.externalId);
 
-    if (!isDefined(folderPath)) {
+    if (!isDefined(storedFolderPath)) {
       return [];
     }
+
+    const folderPath = normalizeImapFolderPath(imapClient, storedFolderPath);
 
     const mailboxLock = await imapClient.getMailboxLock(folderPath);
 

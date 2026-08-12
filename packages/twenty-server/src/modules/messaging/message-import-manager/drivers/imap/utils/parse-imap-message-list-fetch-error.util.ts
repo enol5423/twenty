@@ -9,6 +9,10 @@ export const parseImapMessageListFetchError = (
   error: Error,
   options?: { cause?: Error },
 ): MessageImportDriverException => {
+  if (error instanceof MessageImportDriverException) {
+    return error;
+  }
+
   if (!error) {
     return new MessageImportDriverException(
       'Unknown IMAP message list fetch error: No error provided',
@@ -31,6 +35,18 @@ export const parseImapMessageListFetchError = (
     return new MessageImportDriverException(
       `Unknown IMAP message list fetch error: ${errorMessage}`,
       MessageImportDriverExceptionCode.UNKNOWN,
+      { cause: options?.cause || error },
+    );
+  }
+
+  if (
+    error.serverResponseCode === 'NONEXISTENT' ||
+    error.responseText?.includes('Mailbox does not exist') ||
+    error.responseText?.includes("Mailbox doesn't exist")
+  ) {
+    return new MessageImportDriverException(
+      `IMAP mailbox not found: ${error.responseText || errorMessage}`,
+      MessageImportDriverExceptionCode.NOT_FOUND,
       { cause: options?.cause || error },
     );
   }
