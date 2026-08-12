@@ -67,24 +67,27 @@ export class ImapGetAllFoldersService implements MessageFolderDriver {
   ): Promise<DiscoveredMessageFolder[]> {
     const folders: DiscoveredMessageFolder[] = [];
     const pathToExternalIdMap = new Map<string, string>();
-    const mailboxes = mailboxList.map((mailbox) => ({
-      ...mailbox,
-      path: normalizeImapFolderPath(client, mailbox.path),
-      parentPath: mailbox.parentPath
-        ? normalizeImapFolderPath(client, mailbox.parentPath)
-        : mailbox.parentPath,
-    }));
-    const discoveredSentFolder =
+
+    for (const mailbox of mailboxList) {
+      mailbox.path = normalizeImapFolderPath(client, mailbox.path);
+
+      if (mailbox.parentPath) {
+        mailbox.parentPath = normalizeImapFolderPath(
+          client,
+          mailbox.parentPath,
+        );
+      }
+    }
+
+    const sentFolder =
       await this.imapFindSentFolderService.findSentFolder(client);
-    const sentFolder = isDefined(discoveredSentFolder)
-      ? {
-          ...discoveredSentFolder,
-          path: normalizeImapFolderPath(client, discoveredSentFolder.path),
-        }
-      : null;
+
+    if (isDefined(sentFolder)) {
+      sentFolder.path = normalizeImapFolderPath(client, sentFolder.path);
+    }
 
     const sentMailbox = isDefined(sentFolder)
-      ? mailboxes.find((mailbox) => mailbox.path === sentFolder.path)
+      ? mailboxList.find((mailbox) => mailbox.path === sentFolder.path)
       : undefined;
 
     if (
@@ -109,7 +112,7 @@ export class ImapGetAllFoldersService implements MessageFolderDriver {
       });
     }
 
-    for (const mailbox of mailboxes) {
+    for (const mailbox of mailboxList) {
       if (!this.isValidMailbox(client, mailbox, folders)) {
         if (!pathToExternalIdMap.has(mailbox.path)) {
           pathToExternalIdMap.set(mailbox.path, mailbox.path);
