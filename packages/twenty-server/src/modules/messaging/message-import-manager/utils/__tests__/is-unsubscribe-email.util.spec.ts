@@ -18,6 +18,9 @@ describe('isUnsubscribeEmail', () => {
     'opt-outreach@acme.com',
     'optoutlet@acme.com',
     'unsubscribers-are-us@acme.com',
+    'contact@unsubscribe-tools.com',
+    'reply@unsubscribe-software.com',
+    'jane@optoutdrive.com',
     'support@acme.com',
     'john.doe@acme.com',
   ])('should not mistake %s for an unsubscribe mailbox', (email) => {

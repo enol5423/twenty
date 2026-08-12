@@ -86,6 +86,51 @@ describe('filterOutUnsubscribeRequests', () => {
     expect(filterOutUnsubscribeRequests(OWN_HANDLES, messages)).toEqual([]);
   });
 
+  it('should filter out the unsubscribe command even when the client adds a reply-to participant', () => {
+    const messages = [
+      buildMessage('list-command-with-reply-to', [
+        {
+          role: MessageParticipantRole.FROM,
+          handle: 'user@example.com',
+          displayName: 'User',
+        },
+        {
+          role: MessageParticipantRole.REPLY_TO,
+          handle: 'user.alias@personal.org',
+          displayName: 'User',
+        },
+        {
+          role: MessageParticipantRole.TO,
+          handle: 'list@host.com',
+          displayName: '',
+        },
+      ]),
+    ];
+
+    expect(filterOutUnsubscribeRequests(OWN_HANDLES, messages)).toEqual([]);
+  });
+
+  it('should keep an outgoing message to a named contact even when its subject is unsubscribe', () => {
+    const messages = [
+      buildMessage('human-recipient', [
+        {
+          role: MessageParticipantRole.FROM,
+          handle: 'user@example.com',
+          displayName: 'User',
+        },
+        {
+          role: MessageParticipantRole.TO,
+          handle: 'john@vendor.com',
+          displayName: 'John Doe',
+        },
+      ]),
+    ];
+
+    expect(filterOutUnsubscribeRequests(OWN_HANDLES, messages)).toEqual(
+      messages,
+    );
+  });
+
   it('should keep an incoming message that merely happens to be about unsubscribing', () => {
     const messages = [
       buildMessage(

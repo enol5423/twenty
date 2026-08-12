@@ -1,4 +1,5 @@
 import { isNonEmptyArray, isNonEmptyString } from '@sniptt/guards';
+import { MessageParticipantRole } from 'twenty-shared/types';
 import { isDefined } from 'twenty-shared/utils';
 
 import { MessageDirection } from 'src/modules/messaging/common/enums/message-direction.enum';
@@ -6,6 +7,12 @@ import { type MessageWithParticipants } from 'src/modules/messaging/message-impo
 import { isUnsubscribeEmail } from 'src/modules/messaging/message-import-manager/utils/is-unsubscribe-email.util';
 
 const UNSUBSCRIBE_COMMAND_SUBJECT = 'unsubscribe';
+
+const RECIPIENT_ROLES: MessageParticipantRole[] = [
+  MessageParticipantRole.TO,
+  MessageParticipantRole.CC,
+  MessageParticipantRole.BCC,
+];
 
 export const filterOutUnsubscribeRequests = (
   messageChannelHandles: string[],
@@ -33,11 +40,27 @@ export const filterOutUnsubscribeRequests = (
       return false;
     }
 
-    const isUnsubscribeCommandToSingleRecipient =
+    const counterpartyRecipients = message.participants.filter(
+      (participant) =>
+        RECIPIENT_ROLES.includes(participant.role) &&
+        isNonEmptyString(participant.handle) &&
+        !ownHandles.includes(participant.handle.toLowerCase()),
+    );
+
+    const counterpartyRecipientHandles = new Set(
+      counterpartyRecipients
+        .map((participant) => participant.handle?.toLowerCase())
+        .filter(isNonEmptyString),
+    );
+
+    const isUnsubscribeCommandToSingleAutomatedRecipient =
       message.direction === MessageDirection.OUTGOING &&
-      counterpartyHandles.length === 1 &&
+      counterpartyRecipientHandles.size === 1 &&
+      counterpartyRecipients.every(
+        (participant) => !isNonEmptyString(participant.displayName),
+      ) &&
       message.subject?.trim().toLowerCase() === UNSUBSCRIBE_COMMAND_SUBJECT;
 
-    return !isUnsubscribeCommandToSingleRecipient;
+    return !isUnsubscribeCommandToSingleAutomatedRecipient;
   });
 };
