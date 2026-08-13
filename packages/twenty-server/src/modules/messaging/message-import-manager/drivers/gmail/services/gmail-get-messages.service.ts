@@ -3,6 +3,7 @@ import { Injectable } from '@nestjs/common';
 import { batchFetchImplementation } from '@jrmdayn/googleapis-batcher';
 import { isNonEmptyString } from '@sniptt/guards';
 import { type gmail_v1 as gmailV1, google } from 'googleapis';
+import chunk from 'lodash.chunk';
 import { isDefined } from 'twenty-shared/utils';
 
 import { MessageFolderImportPolicy } from 'twenty-shared/types';
@@ -13,15 +14,19 @@ import { MESSAGING_GMAIL_EXCLUDED_SYSTEM_LABELS } from 'src/modules/messaging/me
 import { GmailMessagesImportErrorHandler } from 'src/modules/messaging/message-import-manager/drivers/gmail/services/gmail-messages-import-error-handler.service';
 import { filterGmailMessagesByFolderPolicy } from 'src/modules/messaging/message-import-manager/drivers/gmail/utils/filter-gmail-messages-by-folder-policy.util';
 import { parseAndFormatGmailMessage } from 'src/modules/messaging/message-import-manager/drivers/gmail/utils/parse-and-format-gmail-message.util';
-import { createConcurrencyLimiter } from 'src/modules/messaging/message-import-manager/drivers/utils/create-concurrency-limiter.util';
 import { type MessageWithParticipants } from 'src/modules/messaging/message-import-manager/types/message';
+import { createConcurrencyLimiter } from 'src/utils/create-concurrency-limiter.util';
 
 const GMAIL_BATCH_REQUEST_MAX_SIZE = 50;
 // Gmail enforces a per-user concurrent-request limit ("Too many concurrent
-// requests for user"). Each batch request below already groups up to
-// GMAIL_BATCH_REQUEST_MAX_SIZE messages into one HTTP call, but a large
-// full-sync (thousands of messages) still fires hundreds of those batch
-// calls at once via Promise.all with no cap, which is what trips the limit.
+// requests for user"). batchFetchImplementation (backed by dataloader) only
+// groups .get() calls that are issued within the same tick, up to
+// GMAIL_BATCH_REQUEST_MAX_SIZE — it does not throttle how many of the
+// resulting HTTP batch requests are in flight concurrently. fetchMessages
+// chunks messageIds into GMAIL_BATCH_REQUEST_MAX_SIZE-sized groups (so each
+// chunk's .get() calls fire together in one tick and dataloader batches them
+// into a single HTTP request), then caps how many of those chunks — i.e.
+// batch requests — run concurrently at this limit.
 const GMAIL_FETCH_MAX_CONCURRENT_BATCH_REQUESTS = 4;
 
 @Injectable()
@@ -175,22 +180,29 @@ export class GmailGetMessagesService {
       GMAIL_FETCH_MAX_CONCURRENT_BATCH_REQUESTS,
     );
 
-    const results = await Promise.all(
-      messageIds.map((messageId) =>
+    const messageIdBatches = chunk(messageIds, GMAIL_BATCH_REQUEST_MAX_SIZE);
+
+    const resultsByBatch = await Promise.all(
+      messageIdBatches.map((messageIdBatch) =>
         limitConcurrentBatchRequests(() =>
-          gmailClient.users.messages
-            .get({ userId: 'me', id: messageId })
-            .then((response) => ({
-              messageId,
-              data: response.data,
-              error: null,
-            }))
-            .catch((error) => ({ messageId, data: null, error })),
+          Promise.all(
+            messageIdBatch.map((messageId) =>
+              gmailClient.users.messages
+                .get({ userId: 'me', id: messageId })
+                .then((response) => ({
+                  messageId,
+                  data: response.data,
+                  error: null,
+                }))
+                .catch((error) => ({ messageId, data: null, error })),
+            ),
+          ),
         ),
       ),
     );
 
-    return results
+    return resultsByBatch
+      .flat()
       .map(({ messageId, data, error }) => {
         if (error) {
           this.gmailMessagesImportErrorHandler.handleError(error, messageId);

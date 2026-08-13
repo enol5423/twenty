@@ -1,4 +1,4 @@
-import { createConcurrencyLimiter } from 'src/engine/api/common/common-nested-relations-processor/utils/create-concurrency-limiter.util';
+import { createConcurrencyLimiter } from 'src/utils/create-concurrency-limiter.util';
 
 const createDeferred = <T>() => {
   let resolve: (value: T | PromiseLike<T>) => void;

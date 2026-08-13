@@ -1,5 +1,8 @@
 export type ConcurrencyLimiter = <T>(task: () => Promise<T>) => Promise<T>;
 
+// Caps how many async tasks run at once instead of firing every task with
+// Promise.all(), which can overwhelm a downstream provider's rate limit
+// (e.g. a large batch of external API calls fired all at once).
 export const createConcurrencyLimiter = (
   maxConcurrency: number,
 ): ConcurrencyLimiter => {

@@ -17,9 +17,8 @@ const FRESH_TIMESTAMP = new Date(
 ).toISOString();
 
 describe('MessagingOngoingStaleJob', () => {
-  let messageChannelRepository: { find: jest.Mock };
+  let messageChannelRepository: { find: jest.Mock; update: jest.Mock };
   let messageChannelSyncStatusService: {
-    resetSyncStageStartedAt: jest.Mock;
     markAsMessagesListFetchPending: jest.Mock;
     markAsMessagesImportPending: jest.Mock;
   };
@@ -38,9 +37,11 @@ describe('MessagingOngoingStaleJob', () => {
   };
 
   beforeEach(() => {
-    messageChannelRepository = { find: jest.fn().mockResolvedValue([]) };
+    messageChannelRepository = {
+      find: jest.fn().mockResolvedValue([]),
+      update: jest.fn().mockResolvedValue({ affected: 1 }),
+    };
     messageChannelSyncStatusService = {
-      resetSyncStageStartedAt: jest.fn(),
       markAsMessagesListFetchPending: jest.fn(),
       markAsMessagesImportPending: jest.fn(),
     };
@@ -67,9 +68,14 @@ describe('MessagingOngoingStaleJob', () => {
       },
     ]);
 
-    expect(
-      messageChannelSyncStatusService.resetSyncStageStartedAt,
-    ).toHaveBeenCalledWith(['channel-ongoing'], 'workspace-1');
+    expect(messageChannelRepository.update).toHaveBeenCalledWith(
+      {
+        id: 'channel-ongoing',
+        workspaceId: 'workspace-1',
+        syncStage: MessageChannelSyncStage.MESSAGES_IMPORT_ONGOING,
+      },
+      { syncStageStartedAt: null },
+    );
     expect(
       messageChannelSyncStatusService.markAsMessagesImportPending,
     ).toHaveBeenCalledWith(['channel-ongoing'], 'workspace-1');
@@ -84,9 +90,7 @@ describe('MessagingOngoingStaleJob', () => {
       },
     ]);
 
-    expect(
-      messageChannelSyncStatusService.resetSyncStageStartedAt,
-    ).not.toHaveBeenCalled();
+    expect(messageChannelRepository.update).not.toHaveBeenCalled();
   });
 
   it('leaves a recently-throttled pending channel alone (within timeout)', async () => {
@@ -98,9 +102,7 @@ describe('MessagingOngoingStaleJob', () => {
       },
     ]);
 
-    expect(
-      messageChannelSyncStatusService.resetSyncStageStartedAt,
-    ).not.toHaveBeenCalled();
+    expect(messageChannelRepository.update).not.toHaveBeenCalled();
   });
 
   it('recovers a pending channel stuck past the timeout with a preserved timestamp', async () => {
@@ -112,9 +114,14 @@ describe('MessagingOngoingStaleJob', () => {
       },
     ]);
 
-    expect(
-      messageChannelSyncStatusService.resetSyncStageStartedAt,
-    ).toHaveBeenCalledWith(['channel-pending-stuck'], 'workspace-1');
+    expect(messageChannelRepository.update).toHaveBeenCalledWith(
+      {
+        id: 'channel-pending-stuck',
+        workspaceId: 'workspace-1',
+        syncStage: MessageChannelSyncStage.MESSAGES_IMPORT_PENDING,
+      },
+      { syncStageStartedAt: null },
+    );
     expect(
       messageChannelSyncStatusService.markAsMessagesImportPending,
     ).not.toHaveBeenCalled();
@@ -132,9 +139,43 @@ describe('MessagingOngoingStaleJob', () => {
       },
     ]);
 
+    expect(messageChannelRepository.update).toHaveBeenCalledWith(
+      {
+        id: 'channel-list-fetch-pending-stuck',
+        workspaceId: 'workspace-1',
+        syncStage: MessageChannelSyncStage.MESSAGE_LIST_FETCH_PENDING,
+      },
+      { syncStageStartedAt: null },
+    );
     expect(
-      messageChannelSyncStatusService.resetSyncStageStartedAt,
-    ).toHaveBeenCalledWith(['channel-list-fetch-pending-stuck'], 'workspace-1');
+      messageChannelSyncStatusService.markAsMessagesListFetchPending,
+    ).not.toHaveBeenCalled();
+  });
+
+  it('does not demote a channel that already moved on before the guarded update ran', async () => {
+    // Simulates a fast cron having already advanced this channel out of the
+    // stage we snapshotted, between our read and our conditional update.
+    messageChannelRepository.update.mockResolvedValue({ affected: 0 });
+
+    await runWithChannels([
+      {
+        id: 'channel-raced',
+        syncStage: MessageChannelSyncStage.MESSAGES_IMPORT_ONGOING,
+        syncStageStartedAt: STALE_TIMESTAMP,
+      },
+    ]);
+
+    expect(messageChannelRepository.update).toHaveBeenCalledWith(
+      {
+        id: 'channel-raced',
+        workspaceId: 'workspace-1',
+        syncStage: MessageChannelSyncStage.MESSAGES_IMPORT_ONGOING,
+      },
+      { syncStageStartedAt: null },
+    );
+    expect(
+      messageChannelSyncStatusService.markAsMessagesImportPending,
+    ).not.toHaveBeenCalled();
     expect(
       messageChannelSyncStatusService.markAsMessagesListFetchPending,
     ).not.toHaveBeenCalled();

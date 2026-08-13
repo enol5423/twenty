@@ -7,10 +7,6 @@ import { type FindOptionsRelations, type ObjectLiteral } from 'typeorm';
 import { computeMorphOrRelationFieldJoinColumnName } from 'src/engine/metadata-modules/field-metadata/utils/compute-morph-or-relation-field-join-column-name.util';
 import { RelationType } from 'src/engine/metadata-modules/field-metadata/interfaces/relation-type.interface';
 
-import {
-  type ConcurrencyLimiter,
-  createConcurrencyLimiter,
-} from 'src/engine/api/common/common-nested-relations-processor/utils/create-concurrency-limiter.util';
 import { STANDARD_ERROR_MESSAGE } from 'src/engine/api/common/common-query-runners/errors/standard-error-message.constant';
 import {
   GraphqlQueryRunnerException,
@@ -34,6 +30,10 @@ import { type WorkspaceRepository } from 'src/engine/twenty-orm/repository/works
 import { type WorkspaceSelectQueryBuilder } from 'src/engine/twenty-orm/repository/workspace-select-query-builder';
 import { type RolePermissionConfig } from 'src/engine/twenty-orm/types/role-permission-config';
 import { isFieldMetadataEntityOfType } from 'src/engine/utils/is-field-metadata-of-type.util';
+import {
+  type ConcurrencyLimiter,
+  createConcurrencyLimiter,
+} from 'src/utils/create-concurrency-limiter.util';
 
 const EMPTY_RELATION_SENTINEL_RECORD_ID =
   '00000000-0000-0000-0000-000000000000';

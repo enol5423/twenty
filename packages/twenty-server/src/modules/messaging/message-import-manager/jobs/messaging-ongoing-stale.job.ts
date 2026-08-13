@@ -67,10 +67,23 @@ export class MessagingOngoingStaleJob {
             continue;
           }
 
-          await this.messageChannelSyncStatusService.resetSyncStageStartedAt(
-            [messageChannel.id],
-            workspaceId,
+          // Guard against a race with the fast crons: only proceed if the
+          // channel is still in the exact stage we just read. If it already
+          // moved on in the meantime (e.g. a fast cron picked it up and set
+          // a fresh syncStageStartedAt moments ago), skip it rather than
+          // clobbering that fresh state back to null.
+          const { affected } = await this.messageChannelRepository.update(
+            {
+              id: messageChannel.id,
+              workspaceId,
+              syncStage: messageChannel.syncStage,
+            },
+            { syncStageStartedAt: null },
           );
+
+          if (affected === 0) {
+            continue;
+          }
 
           switch (messageChannel.syncStage) {
             case MessageChannelSyncStage.MESSAGE_LIST_FETCH_ONGOING:
